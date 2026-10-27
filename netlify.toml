@@ -1,0 +1,22 @@
+# Netlify: static site, no build step. Makes Git-based deploys zero-config
+# (drag-and-drop deploys at app.netlify.com/drop do not need this file).
+[build]
+  publish = "."
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Permissions-Policy = "camera=(self)"
+    X-Content-Type-Options = "nosniff"
+
+# Large, versioned assets: let browsers cache them for a week.
+[[headers]]
+  for = "/vendor/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
+  for = "/models/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#06070d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="description" content="Rangistan Reality Lab: touch floating colour bubbles in a live AR mirror and recolour your whole world.">
+  <title>Rangistan Reality Lab</title>
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Boot watchdog: classic script, so it works even if the ES modules fail to load or parse. -->
+  <script>
+    (function () {
+      window.__rrlBooted = false;
+      var lastError = '';
+      window.addEventListener('error', function (e) {
+        if (e && e.message) {
+          var where = e.filename ? ' (' + e.filename.split('/').slice(-2).join('/') + ':' + e.lineno + ')' : '';
+          lastError = e.message + where;
+          if (window.__rrlBooted && window.__rrlToast) window.__rrlToast('Error: ' + lastError, 'error');
+        }
+      });
+      window.__rrlBootFail = function (reason) {
+        var box = document.getElementById('bootError');
+        if (!box) return;
+        box.hidden = false;
+        box.querySelector('[data-reason]').textContent = reason;
+        var btn = document.getElementById('startBtn');
+        if (btn) { btn.disabled = true; btn.querySelector('span').textContent = 'Unavailable'; }
+      };
+      document.addEventListener('DOMContentLoaded', function () {
+        if (location.protocol === 'file:') {
+          window.__rrlBootFail('This page was opened directly as a file. Browsers block cameras and JavaScript modules on file:// pages. In the project folder run:  python -m http.server 8000  then open http://localhost:8000');
+          return;
+        }
+        setTimeout(function () {
+          if (!window.__rrlBooted) window.__rrlBootFail('The app scripts did not start. ' + (lastError ? 'Browser reported: ' + lastError : 'Hard-refresh with Ctrl+Shift+R, or open DevTools (F12) > Console.'));
+        }, 8000);
+      });
+    })();
+  </script>
+  <script nomodule>
+    document.addEventListener('DOMContentLoaded', function () {
+      window.__rrlBootFail && window.__rrlBootFail('This browser is too old for Rangistan Reality Lab. Please update, or use the latest Chrome, Edge or Safari.');
+    });
+  </script>
+</head>
+<body class="is-intro">
+
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="view" aria-label="Live camera with colour effects"></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+  <canvas id="fx" aria-hidden="true"></canvas>
+
+  <!-- ================= Floating interface ================= -->
+  <div id="hud" class="hud">
+    <header class="brand" aria-label="Rangistan Reality Lab">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div class="brand-text"><span class="brand-title">RANGISTAN</span><span class="brand-sub">Reality Lab</span></div>
+    </header>
+
+    <div id="status" class="status" role="status" aria-live="polite">
+      <span class="status-dot"></span><span id="statusText">Camera off</span>
+    </div>
+
+    <!-- Left: what to play with. Right: the colours of that mode. Both at mid-height on the edges. -->
+    <nav id="modeRail" class="rail rail-left" aria-label="Modes"></nav>
+    <div id="optRail" class="rail rail-right" aria-label="Colours"></div>
+
+    <!-- What just happened, in plain words -->
+    <div id="info" class="info is-faded" aria-live="polite">
+      <div class="info-text"><b id="infoTitle">Filters</b><span id="infoText"></span></div>
+      <div id="infoSwatches" class="info-swatches"></div>
+    </div>
+
+    <!-- Small utility dock (mouse / touch screen) -->
+    <div id="dock" class="dock">
+      <button id="guideBtn" class="dock-btn" title="How to play" aria-label="How to play">?</button>
+      <button id="soundBtn" class="dock-btn" title="Sound on/off" aria-label="Sound on/off">
+        <svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+      </button>
+      <button id="camBtn" class="dock-btn" title="Switch camera" aria-label="Switch camera" hidden>
+        <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M9.5 12.5a2.8 2.8 0 0 1 5-1.6M14.5 14a2.8 2.8 0 0 1-5 1.6"/></svg>
+      </button>
+      <button id="fsBtn" class="dock-btn" title="Full screen (F)" aria-label="Full screen">
+        <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+      <button id="hideBtn" class="dock-btn" title="Hide bubbles (H)" aria-label="Hide bubbles">
+        <svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c5 0 9 6 9 6a17 17 0 0 1-3.2 3.8M6.5 7.6C4.3 9.2 3 12 3 12s4 6 9 6c1.5 0 2.9-.4 4.1-1"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= Guide ================= -->
+  <section id="guide" class="guide" hidden>
+    <div class="guide-card">
+      <div id="guideDots" class="guide-dots"></div>
+      <h2 id="guideTitle"></h2>
+      <p id="guideText"></p>
+      <p id="guideLive" class="guide-live" data-state="wait"></p>
+      <div class="guide-actions">
+        <button id="guideOk" class="guide-ok">Let’s play</button>
+        <button id="guideAlt" class="guide-alt">Skip</button>
+      </div>
+    </div>
+  </section>
+  <button id="touchMe" class="bubble touch-me" data-touch aria-label="Touch me" data-colors="#ff2d95,#ffb020,#3ef2ff" hidden>
+    <span class="bubble-body"><span class="bubble-icon">✋</span><span class="bubble-shine"></span></span>
+    <span class="bubble-label">Touch me</span>
+  </button>
+
+  <!-- Camera interrupted -->
+  <section id="camPause" class="cam-pause" hidden>
+    <div class="cam-pause-card">
+      <h2 id="camPauseTitle">Camera paused</h2>
+      <p id="camPauseText">The camera stopped sending video.</p>
+      <button id="camResumeBtn" class="start-btn small"><span>Resume camera</span></button>
+    </div>
+  </section>
+
+  <!-- ================= Intro ================= -->
+  <section id="intro" class="intro">
+    <div class="intro-bubbles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="intro-card">
+      <p class="intro-eyebrow">An AR colour lab from the world of Rangistan</p>
+      <h1 class="intro-title">RANGISTAN<span>Reality Lab</span></h1>
+      <p class="intro-lede">Step into the mirror and touch the floating colour bubbles. Your face, your clothes, the walls: everything changes colour.</p>
+      <button id="startBtn" class="start-btn" disabled><span>Loading…</span></button>
+      <label class="intro-check"><input id="fsCheck" type="checkbox" checked> Full screen</label>
+      <div id="camError" class="intro-error" hidden><strong data-title></strong><p data-hint></p></div>
+      <div id="bootError" class="intro-error" hidden><strong>The app could not start</strong><p data-reason></p></div>
+      <p class="intro-foot">The camera stays on your device. Nothing is uploaded.</p>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" role="alert" hidden></div>
+
+  <script type="module" src="js/main.js"
+          onerror="window.__rrlBootFail && window.__rrlBootFail('js/main.js could not be downloaded. Make sure the server was started inside the project folder.')"></script>
+</body>
+</html>
